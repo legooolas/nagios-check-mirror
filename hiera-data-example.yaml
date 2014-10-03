@@ -1,0 +1,18 @@
+---
+nagios::check::http_mirror::mirrors:
+  centos:
+    description  : 'CentOS local mirror check'
+    upstream     : "mirror.centos.org"
+    upstream_path: "centos-6/6/updates/x86_64/repodata/repomd.xml"
+    our_host     : "localmirror.example.org"
+    our_path     : "mirrors/CentOS/6/updates/x86_64/repodata/repomd.xml"
+    maxdiff      : '1440'
+  
+  sl:
+    description  : 'Scientific Linux local mirror check'
+    upstream     : "ftp.scientificlinux.org"
+    upstream_path: "linux/scientific/7x/x86_64/updates/security/repodata/repomd.xml"
+    our_host     : "localmirror.example.org"
+    our_path     : "mirrors/scientific/7x/x86_64/updates/security/repodata/repomd.xml"
+    maxdiff      : '1440'
+  
