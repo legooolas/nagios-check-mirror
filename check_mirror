@@ -1,0 +1,86 @@
+#!/usr/bin/perl
+
+# Hacked from http monitoring script at https://wiki.ubuntu.com/Mirrors/Monitoring%20Scripts
+# ..to make it skip the resolution check and to be more generic.
+# Works without any nagios plugins installed locally (handy for testing).
+
+use LWP::UserAgent;
+use Date::Parse;
+use Getopt::Std;
+use strict;
+# These are required to run inside Nagios:
+use lib "/usr/lib64/nagios/plugins" ;
+# You'll want something like this to use this as a Puppet template:
+#use lib "<%= @plugindir %>" ;
+use utils qw($TIMEOUT %ERRORS &print_revision &support &usage);
+
+
+my %opts = ();
+# TODO : required args!
+# TODO : help text and argument
+getopts("d:H:h:F:f:", \%opts);
+
+my $ua = LWP::UserAgent->new;
+$ua->agent("NagiosMirrorCheck/0.9 ");
+
+# TODO : Blank this out and use required args only!
+my $upstreamhost = $opts{H} ? $opts{H} : "mirror.centos.org";
+my $upstreamfile = $opts{F} ? $opts{F} : "centos-6/6/updates/x86_64/repodata/repomd.xml";
+
+# TODO : blank this out and use required args only!
+my $host = $opts{h} ? $opts{h} : "localmirror.example.org";
+my $file = $opts{f} ? $opts{f} : "mirrors/CentOS/6/updates/x86_64/repodata/repomd.xml";
+
+# Max allowed time difference from command-line is in minutes, we check in seconds here:
+# (1440 minutes is 12 hours)
+my $maxdiff = $opts{d} ? $opts{d} * 60 : 1440 * 60;
+
+# Create a request
+my $upstream_str = 'http://'.$upstreamhost.'/'.$upstreamfile;
+my $upstream     = HTTP::Request->new(HEAD => $upstream_str);
+my $mirror_str   = 'http://'.$host.'/'.$file;
+my $mirror       = HTTP::Request->new(HEAD => $mirror_str);
+
+# Pass request to the user agent and get a response back
+my $upstream_res = $ua->request($upstream);
+my $mirror_res   = $ua->request($mirror);
+
+# Check the outcome of the responses
+if (! $upstream_res->is_success) {
+    print "CRITICAL - Upstream (${upstream_str}) unavailable\n";
+    exit $ERRORS{"CRITICAL"};
+}
+if ($mirror_res->is_success) {
+        my $upstream_time = str2time($upstream_res->header('last-modified'));
+        my $mirror_time    = str2time($mirror_res->header('last-modified'));
+
+        if (!defined($mirror_time)) {
+                print "OK - Unable to determine mirror's last-modified timestamp\n";
+                exit $ERRORS{"OK"};
+        }
+
+        if ($mirror_time > $upstream_time) {
+                print "WARNING - Mirror seems to live in the future\n";
+                exit $ERRORS{"WARNING"};
+        } else {
+                my $diff = $upstream_time - $mirror_time;
+                my ($rest, $days, $hours, $minutes, $seconds) = (0, 0, 0, 0, 0);
+                $days = int($diff/86400);
+                $rest = $diff-($days*86400);
+                $hours = int($rest/3600);
+                $rest = $rest-($hours*3600);
+                $minutes = int($rest/60);
+                $rest = $rest-($minutes*60);
+                $seconds = $rest;
+                if ($diff > $maxdiff) {
+                        print "CRITICAL - Mirror is $days days, $hours hours, $minutes minutes and $seconds seconds behind\n";
+                        exit $ERRORS{"CRITICAL"};
+                } else {
+                        print "OK - Mirror is up to date (seconds diff = " . $diff . ")\n";
+                        exit $ERRORS{"OK"};
+                }
+        }
+} else {
+    print "CRITICAL - Mirror (${mirror_str}) is unavailable\n";
+    exit $ERRORS{"CRITICAL"};
+}
